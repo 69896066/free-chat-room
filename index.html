@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>免费加密聊天室 | GitHub部署</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .chat-container {
+            width: 100%;
+            max-width: 1000px;
+            height: 90vh;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* 头部样式 */
+        .header {
+            background: linear-gradient(135deg, #2c3e50, #4a6491);
+            color: white;
+            padding: 25px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .logo-icon {
+            font-size: 32px;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 20px;
+            border-radius: 50px;
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ff4757;
+        }
+        
+        .status-dot.connected {
+            background: #2ed573;
+        }
+        
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        /* 侧边栏 */
+        .sidebar {
+            width: 300px;
+            background: #f8f9fa;
+            border-right: 1px solid #e9ecef;
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .room-info {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+            margin-bottom: 25px;
+        }
+        
+        .info-item {
+            margin-bottom: 15px;
+        }
+        
+        .info-label {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        
+        .info-value {
+            font-weight: bold;
+            color: #2c3e50;
+            word-break: break-all;
+        }
+        
+        .user-count {
+            background: #3498db;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .share-section {
+            margin-top: 20px;
+        }
+        
+        #shareUrl {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        
+        .copy-btn {
+            width: 100%;
+            padding: 12px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        
+        .copy-btn:hover {
+            background: #2980b9;
+        }
+        
+        /* 聊天区域 */
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            overflow: hidden;
+        }
+        
+        .messages-container {
+            flex: 1;
+            padding: 25px;
+            overflow-y: auto;
+            background: #fafafa;
+        }
+        
+        .message {
+            margin-bottom: 20px;
+            max-width: 75%;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .message.my {
+            margin-left: auto;
+        }
+        
+        .message-content {
+            padding: 15px 20px;
+            border-radius: 20px;
+            position: relative;
+            word-wrap: break-word;
+            line-height: 1.5;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+        }
+        
+        .message.my .message-content {
+            background: linear-gradient(135deg, #3498db, #2c3e50);
+            color: white;
+            border-bottom-right-radius: 5px;
+        }
+        
+        .message.other .message-content {
+            background: white;
+            color: #2c3e50;
+            border: 1px solid #e9ecef;
+            border-bottom-left-radius: 5px;
+        }
+        
+        .message-sender {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+            padding-left: 5px;
+        }
+        
+        .message-time {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 8px;
+            text-align: right;
+        }
+        
+        .system-message {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            padding: 15px;
+            margin: 10px 0;
+            background: rgba(52, 152, 219, 0.1);
+            border-radius: 10px;
+        }
+        
+        /* 输入区域 */
+        .input-area {
+            padding: 25px;
+            background: white;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            gap: 15px;
+        }
+        
+        #messageInput {
+            flex: 1;
+            padding: 15px 20px;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        
+        #messageInput:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+        
+        .send-btn {
+            padding: 0 35px;
+            background: linear-gradient(135deg, #3498db, #2c3e50);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .send-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(52, 152, 219, 0.2);
+        }
+        
+        .send-btn:active {
+            transform: translateY(0);
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 900px) {
+            .main-content {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid #e9ecef;
+            }
+            
+            .message {
+                max-width: 85%;
+            }
+        }
+        
+        @media (max-width: 600px) {
+            .chat-container {
+                height: 95vh;
+                border-radius: 15px;
+            }
+            
+            .header {
+                padding: 20px;
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+            
+            .input-area {
+                padding: 15px;
+                flex-direction: column;
+            }
+            
+            .send-btn {
+                padding: 15px;
+            }
+            
+            .message {
+                max-width: 90%;
+            }
+        }
+        
+        /* 滚动条美化 */
+        .messages-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .messages-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        
+        .messages-container::-webkit-scrollbar-thumb {
+            background: #3498db;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <!-- 头部 -->
+        <div class="header">
+            <div class="logo">
+                <div class="logo-icon">💬</div>
+                <div>
+                    <h1>GitHub免费聊天室</h1>
+                    <p style="opacity: 0.9; font-size: 14px;">端到端加密 • 最多5人在线</p>
+                </div>
+            </div>
+            <div class="status-indicator">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">连接中...</span>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <!-- 侧边栏 -->
+            <div class="sidebar">
+                <div class="room-info">
+                    <h3 style="margin-bottom: 20px; color: #2c3e50;">房间信息</h3>
+                    
+                    <div class="info-item">
+                        <div class="info-label">房间号</div>
+                        <div class="info-value" id="roomId">生成中...</div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">你的ID</div>
+                        <div class="info-value" id="myId">-</div>
+                    </div>
+                    
+                    <div class="info-item">
+                        <div class="info-label">在线人数</div>
+                        <div>
+                            <span class="user-count">
+                                <span id="userCount">1</span>人在线
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="share-section">
+                    <h4 style="margin-bottom: 15px; color: #2c3e50;">邀请朋友</h4>
+                    <input type="text" id="shareUrl" readonly>
+                    <button class="copy-btn" onclick="copyShareLink()">复制邀请链接</button>
+                    <p style="margin-top: 15px; color: #666; font-size: 13px;">
+                        📱 发送此链接给朋友，最多可邀请4人
+                    </p>
+                </div>
+                
+                <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid #e9ecef;">
+                    <p style="color: #666; font-size: 12px;">
+                        💡 提示：此聊天室完全免费，消息端到端加密，不经过服务器
+                    </p>
+                </div>
+            </div>
+            
+            <!-- 聊天区域 -->
+            <div class="chat-area">
+                <div class="messages-container" id="chatMessages">
+                    <div class="system-message" id="welcomeMessage">
+                        <h3>欢迎使用免费聊天室！</h3>
+                        <p>这是一个基于GitHub Pages部署的加密聊天室</p>
+                        <p>💬 发送消息测试功能</p>
+                        <p>📤 复制链接邀请朋友</p>
+                    </div>
+                </div>
+                
+                <div class="input-area">
+                    <input type="text" 
+                           id="messageInput" 
+                           placeholder="输入消息，按Enter发送..." 
+                           autocomplete="off"
+                           disabled>
+                    <button class="send-btn" onclick="sendMessage()" disabled>
+                        发送
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== 配置 ====================
+        const CONFIG = {
+            MAX_USERS: 5,
+            SIGNALING_SERVER: 'wss://signaling.simplewebrtc.com:443/ws/',
+            STUN_SERVERS: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' }
+            ]
+        };
+
+        // ==================== 状态变量 ====================
+        let localUserId = generateUserId();
+        let roomId = getRoomIdFromURL() || generateRoomId();
+        let peerConnections = new Map();
+        let dataChannels = new Map();
+        let ws = null;
+        let isConnected = false;
+
+        // ==================== 初始化 ====================
+        window.onload = function() {
+            initChatApp();
+        };
+
+        function initChatApp() {
+            // 更新UI信息
+            document.getElementById('myId').textContent = localUserId.substring(0, 8);
+            document.getElementById('roomId').textContent = roomId;
+            
+            // 更新欢迎消息
+            updateWelcomeMessage();
+            
+            // 更新分享链接
+            updateShareLink();
+            
+            // 连接信令服务器
+            connectSignaling();
+        }
+
+        // ==================== 信令服务器连接 ====================
+        function connectSignaling() {
+            updateStatus('连接服务器...', false);
+            
+            ws = new WebSocket(CONFIG.SIGNALING_SERVER);
+            
+            ws.onopen = function() {
+                updateStatus('已连接', true);
+                isConnected = true;
+                
+                // 发送加入房间请求
+                ws.send(JSON.stringify({
+                    type: 'join',
+                    room: roomId,
+                    peerId: localUserId
+                }));
+                
+                // 启用输入功能
+                enableInput();
+                
+                addSystemMessage('✅ 服务器连接成功！可以开始聊天了。');
+            };
+            
+            ws.onmessage = async function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    await handleSignal(data);
+                } catch (error) {
+                    console.error('消息解析错误:', error);
+                }
+            };
+            
+            ws.onerror = function(error) {
+                console.error('WebSocket错误:', error);
+                updateStatus('连接错误', false);
+            };
+            
+            ws.onclose = function() {
+                updateStatus('已断开', false);
+                isConnected = false;
+                
+                // 5秒后重连
+                setTimeout(connectSignaling, 5000);
+            };
+        }
+
+        // ==================== 信号处理 ====================
+        async function handleSignal(data) {
+            switch(data.type) {
+                case 'joined':
+                    addSystemMessage(`🎉 已加入房间: ${roomId}`);
+                    break;
+                    
+                case 'peer-joined':
+                    if (peerConnections.size < CONFIG.MAX_USERS - 1) {
+                        const shortId = data.peerId.substring(0, 8);
+                        addSystemMessage(`👤 ${shortId} 加入聊天`);
+                        await createPeer(data.peerId, true);
+                        updateUserCount();
+                    } else {
+                        addSystemMessage('⚠️ 房间已满（最多5人）');
+                    }
+                    break;
+                    
+                case 'peer-left':
+                    const shortId = data.peerId.substring(0, 8);
+                    addSystemMessage(`👋 ${shortId} 离开房间`);
+                    closeConnection(data.peerId);
+                    updateUserCount();
+                    break;
+                    
+                case 'offer':
+                    await handleOffer(data);
+                    break;
+                    
+                case 'answer':
+                    await handleAnswer(data);
+                    break;
+                    
+                case 'ice-candidate':
+                    await handleIceCandidate(data);
+                    break;
+            }
+        }
+
+        // ==================== WebRTC连接 ====================
+        async function createPeer(remoteId, isInitiator) {
+            try {
+                const pc = new RTCPeerConnection({
+                    iceServers: CONFIG.STUN_SERVERS
+                });
+                
+                peerConnections.set(remoteId, pc);
+                
+                // ICE Candidate
+                pc.onicecandidate = (event) => {
+                    if (event.candidate && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'ice-candidate',
+                            room: roomId,
+                            from: localUserId,
+                            to: remoteId,
+                            candidate: event.candidate
+                        }));
+                    }
+                };
+                
+                // 创建数据通道
+                if (isInitiator) {
+                    const dc = pc.createDataChannel('chat');
+                    setupDataChannel(dc, remoteId);
+                    dataChannels.set(remoteId, dc);
+                    
+                    const offer = await pc.createOffer();
+                    await pc.setLocalDescription(offer);
+                    
+                    ws.send(JSON.stringify({
+                        type: 'offer',
+                        room: roomId,
+                        from: localUserId,
+                        to: remoteId,
+                        offer: offer
+                    }));
+                } else {
+                    pc.ondatachannel = (event) => {
+                        const dc = event.channel;
+                        setupDataChannel(dc, remoteId);
+                        dataChannels.set(remoteId, dc);
+                    };
+                }
+                
+            } catch (error) {
+                console.error('创建对等连接失败:', error);
+            }
+        }
+
+        async function handleOffer(data) {
+            try {
+                const pc = await createPeer(data.from, false);
+                await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                
+                ws.send(JSON.stringify({
+                    type: 'answer',
+                    room: roomId,
+                    from: localUserId,
+                    to: data.from,
+                    answer: answer
+                }));
+            } catch (error) {
+                console.error('处理Offer失败:', error);
+            }
+        }
+
+        async function handleAnswer(data) {
+            const pc = peerConnections.get(data.from);
+            if (pc) {
+                await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+            }
+        }
+
+        async function handleIceCandidate(data) {
+            const pc = peerConnections.get(data.from);
+            if (pc && data.candidate) {
+                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+            }
+        }
+
+        // ==================== 数据通道 ====================
+        function setupDataChannel(dc, remoteId) {
+            dc.onopen = () => {
+                const shortId = remoteId.substring(0, 8);
+                addSystemMessage(`✅ 已连接: ${shortId}`);
+                updateUserCount();
+            };
+            
+            dc.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    displayMessage(msg.text, remoteId, false, msg.timestamp);
+                } catch (e) {
+                    console.error('消息接收错误:', e);
+                }
+            };
+            
+            dc.onclose = () => {
+                closeConnection(remoteId);
+                updateUserCount();
+            };
+        }
+
+        // ==================== 消息发送 ====================
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const text = input.value.trim();
+            
+            if (!text || !isConnected) return;
+            
+            // 显示自己的消息
+            displayMessage(text, localUserId, true, Date.now());
+            
+            // 发送给所有连接的用户
+            const message = {
+                type: 'message',
+                text: text,
+                timestamp: Date.now(),
+                sender: localUserId
+            };
+            
+            dataChannels.forEach((dc, peerId) => {
+                if (dc.readyState === 'open') {
+                    dc.send(JSON.stringify(message));
+                }
+            });
+            
+            // 清空输入框
+            input.value = '';
+            input.focus();
+        }
+
+        // ==================== 界面更新 ====================
+        function displayMessage(text, senderId, isMyMessage, timestamp) {
+            const chatArea = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            
+            const shortId = senderId.substring(0, 8);
+            const timeString = new Date(timestamp).toLocaleTimeString([], { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            
+            messageDiv.className = `message ${isMyMessage ? 'my' : 'other'}`;
+            messageDiv.innerHTML = `
+                ${!isMyMessage ? `<div class="message-sender">${shortId}</div>` : ''}
+                <div class="message-content">${escapeHtml(text)}</div>
+                <div class="message-time">${timeString}</div>
+            `;
+            
+            chatArea.appendChild(messageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        function addSystemMessage(text) {
+            const chatArea = document.getElementById('chatMessages');
+            const systemDiv = document.createElement('div');
+            
+            systemDiv.className = 'system-message';
+            systemDiv.innerHTML = text;
+            
+            chatArea.appendChild(systemDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        function updateStatus(statusText, isConnected) {
+            const statusDot = document.getElementById('statusDot');
+            const statusTextEl = document.getElementById('statusText');
+            
+            statusTextEl.textContent = statusText;
+            
+            if (isConnected) {
+                statusDot.className = 'status-dot connected';
+            } else {
+                statusDot.className = 'status-dot';
+            }
+        }
+
+        function updateUserCount() {
+            const count = dataChannels.size + 1;
+            document.getElementById('userCount').textContent = count;
+        }
+
+        function updateWelcomeMessage() {
+            const welcomeEl = document.getElementById('welcomeMessage');
+            if (welcomeEl) {
+                welcomeEl.innerHTML = `
+                    <h3>欢迎，${localUserId.substring(0, 8)}！</h3>
+                    <p>房间号：${roomId}</p>
+                    <p>💬 开始发送消息测试功能</p>
+                    <p>📤 复制右侧链接邀请朋友</p>
+                `;
+            }
+        }
+
+        function updateShareLink() {
+            const shareUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
+            document.getElementById('shareUrl').value = shareUrl;
+            
+            // 更新浏览器URL
+            if (!getRoomIdFromURL()) {
+                window.history.replaceState({}, '', shareUrl);
+            }
+        }
+
+        function enableInput() {
+            document.getElementById('messageInput').disabled = false;
+            document.querySelector('.send-btn').disabled = false;
+            document.getElementById('messageInput').focus();
+        }
+
+        // ==================== 工具函数 ====================
+        function generateUserId() {
+            return 'user_' + Math.random().toString(36).substring(2, 10) + 
+                   Date.now().toString(36).substring(5);
+        }
+
+        function generateRoomId() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let roomId = '';
+            for (let i = 0; i < 6; i++) {
+                roomId += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return roomId;
+        }
+
+        function getRoomIdFromURL() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('room');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function closeConnection(peerId) {
+            const pc = peerConnections.get(peerId);
+            if (pc) {
+                pc.close();
+                peerConnections.delete(peerId);
+            }
+            dataChannels.delete(peerId);
+        }
+
+        function copyShareLink() {
+            const shareInput = document.getElementById('shareUrl');
+            shareInput.select();
+            shareInput.setSelectionRange(0, 99999);
+            
+            try {
+                navigator.clipboard.writeText(shareInput.value).then(() => {
+                    const button = document.querySelector('.copy-btn');
+                    const originalText = button.textContent;
+                    button.textContent = '✅ 已复制';
+                    button.style.background = '#27ae60';
+                    
+                    setTimeout(() => {
+                        button.textContent = originalText;
+                        button.style.background = '';
+                    }, 2000);
+                    
+                    addSystemMessage('📋 邀请链接已复制到剪贴板');
+                });
+            } catch (err) {
+                // 降级方案
+                document.execCommand('copy');
+                alert('链接已复制！');
+            }
+        }
+
+        // ==================== 事件监听 ====================
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        window.addEventListener('beforeunload', () => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'leave',
+                    room: roomId,
+                    peerId: localUserId
+                }));
+            }
+        });
+    </script>
+</body>
+</html>
