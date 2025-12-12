@@ -835,5 +835,356 @@
             }
         });
     </script>
+
+
+<script>
+// ==================== 优化版配置 ====================
+const CONFIG = {
+    MAX_USERS: 5,
+    // 多个备用信令服务器
+    SIGNALING_SERVERS: [
+        'wss://signaling.simplewebrtc.com:443/ws/',
+        'wss://webrtc-signaling.herokuapp.com/',
+        'wss://global.webrtc.signaling.network/'
+    ],
+    STUN_SERVERS: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' }
+    ],
+    TURN_SERVER: null
+};
+
+// ==================== 状态变量 ====================
+let localUserId = 'user_' + Math.random().toString(36).substring(2, 10);
+let roomId = getRoomIdFromURL() || generateRoomId();
+let peerConnections = new Map();
+let dataChannels = new Map();
+let ws = null;
+let currentServerIndex = 0;
+let connectionAttempts = 0;
+const MAX_ATTEMPTS = 3;
+
+// ==================== 初始化 ====================
+window.onload = function() {
+    initChat();
+};
+
+function initChat() {
+    document.getElementById('myId').textContent = localUserId.substring(0, 8);
+    document.getElementById('roomId').textContent = roomId;
+    updateShareLink();
+    
+    // 显示本地模式提示
+    document.getElementById('welcomeMessage').innerHTML = `
+        <h3>🔒 本地加密聊天室</h3>
+        <p>房间号：<strong>${roomId}</strong></p>
+        <p>你的ID：<strong>${localUserId.substring(0, 8)}</strong></p>
+        <p>💡 正在尝试连接服务器...</p>
+    `;
+    
+    // 尝试连接信令服务器
+    tryConnectSignaling();
+}
+
+// ==================== 改进的连接函数 ====================
+function tryConnectSignaling() {
+    if (connectionAttempts >= MAX_ATTEMPTS) {
+        showLocalMode();
+        return;
+    }
+    
+    updateStatus('正在连接服务器 ' + (connectionAttempts + 1) + '/' + MAX_ATTEMPTS, false);
+    
+    const serverUrl = CONFIG.SIGNALING_SERVERS[currentServerIndex];
+    ws = new WebSocket(serverUrl);
+    
+    // 设置超时
+    const timeout = setTimeout(() => {
+        if (ws.readyState === WebSocket.CONNECTING) {
+            ws.close();
+            tryNextServer();
+        }
+    }, 5000);
+    
+    ws.onopen = function() {
+        clearTimeout(timeout);
+        connectionAttempts = 0;
+        updateStatus('已连接', true);
+        
+        // 发送加入房间请求
+        ws.send(JSON.stringify({
+            type: 'join',
+            room: roomId,
+            peerId: localUserId
+        }));
+        
+        enableInput();
+        addSystemMessage('✅ 服务器连接成功！可以开始聊天了。');
+    };
+    
+    ws.onmessage = async function(event) {
+        try {
+            const data = JSON.parse(event.data);
+            handleSignalingMessage(data);
+        } catch (error) {
+            console.log('消息解析错误:', error);
+        }
+    };
+    
+    ws.onerror = function(error) {
+        console.log('连接错误:', error);
+    };
+    
+    ws.onclose = function() {
+        clearTimeout(timeout);
+        updateStatus('已断开', false);
+        
+        // 尝试下一个服务器
+        setTimeout(() => {
+            tryNextServer();
+        }, 2000);
+    };
+}
+
+function tryNextServer() {
+    connectionAttempts++;
+    currentServerIndex = (currentServerIndex + 1) % CONFIG.SIGNALING_SERVERS.length;
+    tryConnectSignaling();
+}
+
+// ==================== 本地回退模式 ====================
+function showLocalMode() {
+    updateStatus('本地模式', true);
+    
+    document.getElementById('welcomeMessage').innerHTML = `
+        <h3>🏠 本地测试模式</h3>
+        <p>⚠️ 无法连接到服务器，但您仍然可以：</p>
+        <p>1. 📝 发送消息测试界面功能</p>
+        <p>2. 📱 在不同设备打开相同链接测试连接</p>
+        <p>3. 🔄 刷新页面重试连接</p>
+        <p>💡 本地网络下多设备测试通常可以直连</p>
+    `;
+    
+    enableInput();
+    addSystemMessage('⚠️ 当前为本地模式，请在同一网络下的不同设备打开链接测试连接。');
+}
+
+// ==================== 简化版信令处理 ====================
+function handleSignalingMessage(data) {
+    console.log('收到信令:', data.type);
+    
+    switch(data.type) {
+        case 'joined':
+            addSystemMessage(`✅ 已加入房间: ${roomId}`);
+            break;
+            
+        case 'peer-joined':
+            if (peerConnections.size < CONFIG.MAX_USERS - 1) {
+                addSystemMessage(`👤 ${data.peerId.substring(0, 8)} 加入`);
+                createPeerConnection(data.peerId, true);
+                updateUserCount();
+            }
+            break;
+            
+        case 'peer-left':
+            addSystemMessage(`👋 ${data.peerId.substring(0, 8)} 离开`);
+            closeConnection(data.peerId);
+            updateUserCount();
+            break;
+    }
+}
+
+// ==================== 简化版WebRTC连接 ====================
+async function createPeerConnection(remoteId, isInitiator) {
+    try {
+        const pc = new RTCPeerConnection({
+            iceServers: CONFIG.STUN_SERVERS
+        });
+        
+        peerConnections.set(remoteId, pc);
+        
+        if (isInitiator) {
+            const dc = pc.createDataChannel('chat');
+            setupDataChannel(dc, remoteId);
+            dataChannels.set(remoteId, dc);
+            
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'offer',
+                    room: roomId,
+                    from: localUserId,
+                    to: remoteId,
+                    offer: offer
+                }));
+            }
+        } else {
+            pc.ondatachannel = (event) => {
+                const dc = event.channel;
+                setupDataChannel(dc, remoteId);
+                dataChannels.set(remoteId, dc);
+            };
+        }
+        
+    } catch (error) {
+        console.log('创建连接失败:', error);
+    }
+}
+
+// ==================== 数据通道 ====================
+function setupDataChannel(dc, remoteId) {
+    dc.onopen = () => {
+        addSystemMessage(`✅ 已连接: ${remoteId.substring(0, 8)}`);
+        updateUserCount();
+    };
+    
+    dc.onmessage = (event) => {
+        try {
+            const msg = JSON.parse(event.data);
+            displayMessage(msg.text, remoteId, false, msg.timestamp);
+        } catch (e) {
+            // 直接显示文本消息
+            displayMessage(event.data, remoteId, false, Date.now());
+        }
+    };
+    
+    dc.onclose = () => {
+        closeConnection(remoteId);
+        updateUserCount();
+    };
+}
+
+// ==================== 消息发送 ====================
+function sendMessage() {
+    const input = document.getElementById('messageInput');
+    const text = input.value.trim();
+    
+    if (!text) return;
+    
+    // 显示自己的消息
+    displayMessage(text, localUserId, true, Date.now());
+    
+    // 发送给所有已连接的用户
+    const message = {
+        text: text,
+        timestamp: Date.now(),
+        sender: localUserId
+    };
+    
+    dataChannels.forEach((dc, peerId) => {
+        if (dc.readyState === 'open') {
+            dc.send(JSON.stringify(message));
+        }
+    });
+    
+    input.value = '';
+    input.focus();
+}
+
+// ==================== 界面函数 ====================
+function displayMessage(text, senderId, isMyMessage, timestamp) {
+    const chatArea = document.getElementById('chatMessages');
+    const messageDiv = document.createElement('div');
+    
+    const shortId = senderId.substring(0, 8);
+    const timeString = new Date(timestamp).toLocaleTimeString([], { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+    });
+    
+    messageDiv.className = `message ${isMyMessage ? 'my' : 'other'}`;
+    messageDiv.innerHTML = `
+        ${!isMyMessage ? `<div class="message-sender">${shortId}</div>` : ''}
+        <div class="message-content">${escapeHtml(text)}</div>
+        <div class="message-time">${timeString}</div>
+    `;
+    
+    chatArea.appendChild(messageDiv);
+    chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+function addSystemMessage(text) {
+    const chatArea = document.getElementById('chatMessages');
+    const systemDiv = document.createElement('div');
+    
+    systemDiv.className = 'system-message';
+    systemDiv.innerHTML = text;
+    
+    chatArea.appendChild(systemDiv);
+    chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+function updateStatus(statusText, isConnected) {
+    const statusDot = document.getElementById('statusDot');
+    const statusTextEl = document.getElementById('statusText');
+    
+    statusTextEl.textContent = statusText;
+    
+    if (isConnected) {
+        statusDot.className = 'status-dot connected';
+    } else {
+        statusDot.className = 'status-dot';
+    }
+}
+
+function updateUserCount() {
+    const count = dataChannels.size + 1;
+    document.getElementById('userCount').textContent = count;
+}
+
+function updateShareLink() {
+    const shareUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
+    document.getElementById('shareUrl').value = shareUrl;
+}
+
+function enableInput() {
+    document.getElementById('messageInput').disabled = false;
+    document.querySelector('.send-btn').disabled = false;
+    document.getElementById('messageInput').focus();
+}
+
+function closeConnection(peerId) {
+    const pc = peerConnections.get(peerId);
+    if (pc) pc.close();
+    peerConnections.delete(peerId);
+    dataChannels.delete(peerId);
+}
+
+function generateRoomId() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    return Array.from({length: 6}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+}
+
+function getRoomIdFromURL() {
+    return new URLSearchParams(window.location.search).get('room');
+}
+
+function escapeHtml(text) {
+    return text.replace(/[&<>"']/g, m => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;',
+        '"': '&quot;', "'": '&#39;'
+    })[m]);
+}
+
+// ==================== 事件监听 ====================
+document.getElementById('messageInput').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') sendMessage();
+});
+
+document.querySelector('.copy-btn').addEventListener('click', function() {
+    const shareInput = document.getElementById('shareUrl');
+    shareInput.select();
+    document.execCommand('copy');
+    this.textContent = '✅ 已复制';
+    setTimeout(() => this.textContent = '复制邀请链接', 2000);
+    addSystemMessage('📋 链接已复制到剪贴板');
+});
+</script>
+
+    
 </body>
 </html>
